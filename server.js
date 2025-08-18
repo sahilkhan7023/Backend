@@ -35,7 +35,8 @@ app.use(morgan("combined"));
 // CORS configuration
 const allowedOrigins = [
   process.env.FRONTEND_URL || "http://localhost:5173",
-  "https://68c0e01a.vercel.app", // Added your Vercel frontend URL
+  "https://68c0e01a.vercel.app", // Original URL
+  "https://longuaai-app-beci-68lyeanza-sahils-projects-68c0e01a.vercel.app", // Actual Vercel URL from logs
 ];
 
 app.use(
@@ -128,4 +129,3 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
 });
-
