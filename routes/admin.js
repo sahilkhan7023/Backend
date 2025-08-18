@@ -1,141 +1,113 @@
-const express = require('express');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const { body, query, validationResult } = require('express-validator');
-const rateLimit = require('express-rate-limit');
-const User = require('../models/User');
-const Progress = require('../models/Progress');
-const Lesson = require('../models/Lesson');
-const VocabItem = require('../models/VocabItem');
-const { Quiz } = require('../models/Quiz');
-const Subscription = require('../models/Subscription');
-const { authenticateToken, requireAdmin } = require('../middleware/auth');
+// ======================
+// Get users with subscriptions (fixed version)
+// ======================
+router.get('/users', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
 
-const router = express.Router();
+    const [users, totalUsers] = await Promise.all([
+      User.find({})
+        .skip(skip)
+        .limit(limit)
+        .select('-password')
+        .lean(),
+      User.countDocuments()
+    ]);
 
-/**
- * ======================
- * Admin Login (Public)
- * ======================
- */
-const adminLoginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5,
-  message: 'Too many login attempts, please try again later.',
-  standardHeaders: true,
-  legacyHeaders: false,
+    const userIds = users.map(u => u._id);
+    const subscriptions = await Subscription.find({ userId: { $in: userIds } });
+    const subscriptionMap = subscriptions.reduce((map, sub) => {
+      map[sub.userId.toString()] = sub;
+      return map;
+    }, {});
+
+    const usersWithSubscriptions = users.map(user => ({
+      ...user,
+      subscription: subscriptionMap[user._id.toString()] || null
+    }));
+
+    res.json({
+      message: 'Users retrieved successfully',
+      users: usersWithSubscriptions,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(totalUsers / limit),
+        totalUsers,
+        hasNext: page * limit < totalUsers,
+        hasPrev: page > 1
+      }
+    });
+  } catch (error) {
+    console.error('Get users error:', error);
+    res.status(500).json({
+      message: 'Failed to retrieve users',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
 });
 
-router.post(
-  '/login',
-  adminLoginLimiter,
-  [
-    body('email').isEmail().withMessage('Valid email required'),
-    body('password').notEmpty().withMessage('Password required'),
-  ],
-  async (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          message: 'Validation failed',
-          errors: errors.array(),
-        });
-      }
-
-      const { email, password } = req.body;
-
-      // Find user with role: admin
-      const admin = await User.findOne({ email, role: 'admin' });
-      if (!admin) {
-        return res.status(401).json({ message: 'Invalid credentials' });
-      }
-
-      // Compare password
-      const isMatch = await bcrypt.compare(password, admin.password);
-      if (!isMatch) {
-        return res.status(401).json({ message: 'Invalid credentials' });
-      }
-
-      // Generate JWT token
-      const token = jwt.sign(
-        { id: admin._id, role: 'admin' },
-        process.env.JWT_SECRET || 'supersecret',
-        { expiresIn: '1h' }
-      );
-
-      res.json({
-        message: 'Admin login successful',
-        admin: {
-          id: admin._id,
-          email: admin.email,
-        },
-        token,
-      });
-    } catch (err) {
-      console.error('Admin login error:', err);
-      res.status(500).json({ message: 'Server error' });
-    }
-  }
-);
-
-/**
- * ======================
- * Protect all routes below
- * ======================
- */
-router.use(authenticateToken);
-router.use(requireAdmin);
-
-/**
- * Admin Dashboard Analytics
- */
-router.get('/dashboard', async (req, res) => {
+// ======================
+// System Settings
+// ======================
+router.get('/settings', async (req, res) => {
   try {
-    const [
-      totalUsers,
-      activeUsers,
-      totalLessons,
-      totalQuizzes,
-      subscriptionStats,
-      recentActivity,
-    ] = await Promise.all([
-      User.countDocuments({ isActive: true }),
-      User.countDocuments({
-        isActive: true,
-        lastActiveDate: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
-      }),
-      Lesson.countDocuments({ isPublished: true }),
-      Quiz.countDocuments({ isPublished: true }),
-      Subscription.getUsageStats(),
-      User.find({ isActive: true })
-        .sort({ lastActiveDate: -1 })
-        .limit(10)
-        .select('username email lastActiveDate totalXP'),
-    ]);
-
-    const totalRevenue = subscriptionStats.reduce(
-      (sum, stat) => sum + (stat.totalRevenue || 0),
-      0
-    );
-
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const userGrowth = await User.aggregate([
-      { $match: { createdAt: { $gte: thirtyDaysAgo } } },
-      {
-        $group: {
-          _id: {
-            year: { $year: '$createdAt' },
-            month: { $month: '$createdAt' },
-            day: { $dayOfMonth: '$createdAt' },
-          },
-          count: { $sum: 1 },
-        },
+    const settings = {
+      aiPrompts: {
+        general: "You are an AI language tutor helping students learn languages.",
+        grammar: "You are an AI grammar tutor. Help students understand grammar rules.",
+        vocabulary: "You are an AI vocabulary tutor. Help students learn new words.",
+        pronunciation: "You are an AI pronunciation coach.",
+        conversation: "You are an AI conversation partner."
       },
-      { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } },
-    ]);
+      features: {
+        aiChatEnabled: true,
+        voiceRecognitionEnabled: true,
+        offlineModeEnabled: true,
+        pushNotificationsEnabled: true
+      },
+      limits: {
+        freeUserLessonsPerDay: 3,
+        freeUserAiChatsPerDay: 10,
+        premiumUserLessonsPerDay: 20,
+        premiumUserAiChatsPerDay: 100
+      }
+    };
 
-    const analytics = {
+    res.json({
+      message: 'Settings retrieved successfully',
+      settings
+    });
+  } catch (error) {
+    console.error('Get settings error:', error);
+    res.status(500).json({
+      message: 'Failed to retrieve settings',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
+
+// Update system settings
+router.put('/settings', async (req, res) => {
+  try {
+    const { settings } = req.body;
+
+    // In real app, save settings to DB
+    res.json({
+      message: 'Settings updated successfully',
+      settings
+    });
+  } catch (error) {
+    console.error('Update settings error:', error);
+    res.status(500).json({
+      message: 'Failed to update settings',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
+
+module.exports = router;
       overview: {
         totalUsers,
         activeUsers,
