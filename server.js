@@ -10,6 +10,8 @@ const { Server } = require('socket.io');
 require('dotenv').config();
 
 const app = express();
+app.set('trust proxy', 1); // ✅ needed for Railway/Vercel
+
 const server = createServer(app);
 const io = new Server(server, {
   cors: {
@@ -40,13 +42,6 @@ const io = new Server(server, {
   }
 });
 
-const express = require('express');
-const app = express();
-
-// 👇 Add this line
-app.set('trust proxy', 1); // trust first proxy (needed for Railway/Heroku/Vercel)
-
-app.use(express.json());
 
 
 // Import routes
