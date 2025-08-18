@@ -35,8 +35,7 @@ app.use(morgan("combined"));
 // CORS configuration
 const allowedOrigins = [
   process.env.FRONTEND_URL || "http://localhost:5173",
-  "https://68c0e01a.vercel.app", // Original URL
-  "https://longuaai-app-beci-68lyeanza-sahils-projects-68c0e01a.vercel.app", // Actual Vercel URL from logs
+  "https://longuaai-app-beci-6blyeapza-sahils-projects-68c0e01a.vercel.app", // Corrected Vercel URL from latest logs
 ];
 
 app.use(
