@@ -179,7 +179,6 @@ router.get('/dashboard', async (req, res) => {
  * I didn’t change them – just left as they were in your file.
  */
 
-module.exports = router;
     const subscriptions = await Subscription.find({ userId: { $in: userIds } });
     const subscriptionMap = subscriptions.reduce((map, sub) => {
       map[sub.userId.toString()] = sub;
