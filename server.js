@@ -40,6 +40,15 @@ const io = new Server(server, {
   }
 });
 
+const express = require('express');
+const app = express();
+
+// 👇 Add this line
+app.set('trust proxy', 1); // trust first proxy (needed for Railway/Heroku/Vercel)
+
+app.use(express.json());
+
+
 // Import routes
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/user');
